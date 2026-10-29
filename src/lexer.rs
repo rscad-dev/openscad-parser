@@ -2,6 +2,7 @@ use crate::span::Span;
 use logos::Logos;
 use std::fmt;
 use std::num::ParseFloatError;
+use std::ops::Range;
 
 /// Custom error type for the OpenSCAD lexer
 #[derive(Debug, Clone, PartialEq)]
@@ -181,6 +182,11 @@ pub enum Tokens<'t> {
     // Special literals
     #[token("$")]
     Dollar,
+
+    /// The raw text between `<` and `>` of an `include` / `use` directive.
+    /// Never produced by the raw [`Tokens::lexer`]; see
+    /// [`Tokens::lexer_with_errors`].
+    Path(&'t str),
 }
 
 /// Tokens paired with their source spans.
@@ -253,6 +259,7 @@ impl fmt::Display for Tokens<'_> {
 
             // Special
             Self::Dollar => f.write_str("$"),
+            Self::Path(s) => write!(f, "{s}"),
         }
     }
 }
@@ -290,20 +297,11 @@ impl<'t> Tokens<'t> {
     /// surfaced as diagnostics.
     pub fn to_chumsky_input<'a>(source: &'a str, context: usize) -> impl crate::parser::Input<'a> {
         chumsky::input::IterInput::new(
-            Tokens::lexer(source)
-                .spanned()
-                .filter_map(move |(token, span)| {
-                    let span = Span {
-                        start: span.start,
-                        end: span.end,
-                        context,
-                    };
-                    match token {
-                        Ok(t) if t.is_comment() => None,
-                        Ok(t) => Some((t, span)),
-                        Err(_) => None,
-                    }
-                }),
+            Tokens::spanned(source, context).filter_map(|(token, span)| match token {
+                Ok(t) if t.is_comment() => None,
+                Ok(t) => Some((t, span)),
+                Err(_) => None,
+            }),
             Span {
                 start: source.len(),
                 end: source.len(),
@@ -340,18 +338,79 @@ impl<'t> Tokens<'t> {
     ) -> (SpannedTokens<'t>, SpannedLexErrors<'t>) {
         let mut tokens = Vec::new();
         let mut errors = Vec::new();
-        for (token, span) in Tokens::lexer(source).spanned() {
-            let span = Span {
-                start: span.start,
-                end: span.end,
-                context: id,
-            };
+        for (token, span) in Tokens::spanned(source, id) {
             match token {
                 Ok(t) => tokens.push((t, span)),
                 Err(e) => errors.push((e, span)),
             }
         }
         (tokens, errors)
+    }
+
+    /// Lex `source`, pairing each token (or lex error) with its span.
+    ///
+    /// Unlike the raw [`Tokens::lexer`], the `<path>` following `include` /
+    /// `use` is taken verbatim from the source and emitted as
+    /// [`Lt`](Tokens::Lt), [`Path`](Tokens::Path), [`Gt`](Tokens::Gt) — the
+    /// same special case OpenSCAD's own lexer makes. Tokenising the path
+    /// instead would mangle it (`01` → `1`, `2.` → `2`, spaces dropped).
+    fn spanned(
+        source: &'t str,
+        context: usize,
+    ) -> impl Iterator<Item = (Result<Tokens<'t>, LexingError<'t>>, Span)> + Clone {
+        let mut lexer = Tokens::lexer(source);
+        std::iter::from_fn(move || {
+            let token = lexer.next()?;
+            let keyword = lexer.span();
+            let import = matches!(token, Ok(Tokens::Include | Tokens::Use))
+                .then(|| ImportPath::find(lexer.remainder(), keyword.end))
+                .flatten()
+                .map(|import| {
+                    lexer.bump(import.gt.end - keyword.end);
+                    [
+                        (Ok(Tokens::Lt), import.lt),
+                        (Ok(Tokens::Path(&source[import.path.clone()])), import.path),
+                        (Ok(Tokens::Gt), import.gt),
+                    ]
+                });
+            Some(std::iter::once((token, keyword)).chain(import.into_iter().flatten()))
+        })
+        .flatten()
+        .map(move |(token, range)| {
+            let span = Span {
+                start: range.start,
+                end: range.end,
+                context,
+            };
+            (token, span)
+        })
+    }
+}
+
+/// Byte ranges of the `<`, path text, and `>` of an `include` / `use` path.
+struct ImportPath {
+    lt: Range<usize>,
+    path: Range<usize>,
+    gt: Range<usize>,
+}
+
+impl ImportPath {
+    /// Locate `<path>` at the start of `rest` (after optional whitespace),
+    /// where `rest` begins at byte `offset` of the source. Mirrors OpenSCAD's
+    /// `include[ \t\r\n]*<[^\t\r\n>]*>` rule: the path may not span lines.
+    fn find(rest: &str, offset: usize) -> Option<Self> {
+        let body = rest.trim_start_matches([' ', '\t', '\r', '\n']);
+        let lt = offset + (rest.len() - body.len());
+        let body = body.strip_prefix('<')?;
+        let len = body.find(['>', '\t', '\r', '\n'])?;
+        body[len..].starts_with('>').then(|| {
+            let path = lt + 1..lt + 1 + len;
+            Self {
+                lt: lt..lt + 1,
+                gt: path.end..path.end + 1,
+                path,
+            }
+        })
     }
 }
 

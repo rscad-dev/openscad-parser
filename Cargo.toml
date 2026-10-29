@@ -1,8 +1,8 @@
 [package]
 name = "openscad-parser"
 version = "0.1.0"
-license.workspace = true
-edition.workspace = true
+license = "MIT"
+edition = "2024"
 
 [dependencies]
 ariadne = { features = [
@@ -10,7 +10,6 @@ ariadne = { features = [
 ], git = "https://github.com/zesterer/ariadne" }
 chumsky = { git = "https://github.com/zesterer/chumsky", features = ["pratt"] }
 logos = "0.16"
-tap.workspace = true
 
 [dev-dependencies]
 better-panic = "0.3.0"
