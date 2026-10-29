@@ -1,0 +1,22 @@
+[package]
+name = "openscad-parser"
+version = "0.1.0"
+license.workspace = true
+edition.workspace = true
+
+[dependencies]
+ariadne = { features = [
+  "auto-color",
+], git = "https://github.com/zesterer/ariadne" }
+chumsky = { git = "https://github.com/zesterer/chumsky", features = ["pratt"] }
+logos = "0.16"
+tap.workspace = true
+
+[dev-dependencies]
+better-panic = "0.3.0"
+chumsky = { git = "https://github.com/zesterer/chumsky" }
+logos = "0.16"
+
+[features]
+default = []
+debug = ["chumsky/debug"]
