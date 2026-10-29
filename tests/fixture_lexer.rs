@@ -41,21 +41,14 @@ fn lex_no_space_subtraction() {
         .collect();
     assert_eq!(
         tokens,
-        vec![Tokens::Identifier("a"), Tokens::Minus, Tokens::Number(1.0)]
+        vec![Tokens::Identifier("a"), Tokens::Minus, Tokens::Number("1")]
     );
 }
 
 #[test]
 fn lex_number_forms() {
-    for (src, expected) in [
-        ("1", 1.0),
-        ("1.5", 1.5),
-        (".5", 0.5),
-        ("1.", 1.0),
-        ("2e3", 2000.0),
-        ("1.5e-2", 0.015),
-    ] {
+    for src in ["1", "1.5", ".5", "1.", "2e3", "1.5e-2", "1E+3"] {
         let tokens: Vec<_> = Tokens::lexer(src).map(|t| t.expect("lex error")).collect();
-        assert_eq!(tokens, vec![Tokens::Number(expected)], "lexing {src:?}");
+        assert_eq!(tokens, vec![Tokens::Number(src)], "lexing {src:?}");
     }
 }

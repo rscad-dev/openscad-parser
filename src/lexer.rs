@@ -1,14 +1,11 @@
 use crate::span::Span;
 use logos::Logos;
 use std::fmt;
-use std::num::ParseFloatError;
 use std::ops::Range;
 
 /// Custom error type for the OpenSCAD lexer
 #[derive(Debug, Clone, PartialEq)]
 pub enum LexingError<'l> {
-    /// Invalid number literal
-    InvalidNumber(ParseFloatError),
     /// Invalid string literal (e.g., unclosed string)
     InvalidString,
     /// Unexpected character
@@ -27,7 +24,6 @@ impl Default for LexingError<'_> {
 impl fmt::Display for LexingError<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            LexingError::InvalidNumber(s) => write!(f, "Invalid number literal: {}", s),
             LexingError::InvalidString => write!(f, "Invalid string literal"),
             LexingError::UnexpectedCharacter(c) => write!(f, "Unexpected character: '{}'", c),
             LexingError::Unknown(token) => write!(f, "Unknown token: {}", token),
@@ -37,13 +33,6 @@ impl fmt::Display for LexingError<'_> {
 
 impl std::error::Error for LexingError<'_> {}
 
-/// Convert ParseFloatError to LexingError
-impl From<ParseFloatError> for LexingError<'_> {
-    fn from(err: ParseFloatError) -> Self {
-        LexingError::InvalidNumber(err)
-    }
-}
-
 /// Callback for creating LexingError from lexer context
 impl<'l> LexingError<'l> {
     fn from_lexer(lex: &mut logos::Lexer<'l, Tokens<'l>>) -> Self {
@@ -51,7 +40,7 @@ impl<'l> LexingError<'l> {
     }
 }
 
-#[derive(Debug, Clone, Logos, PartialEq)]
+#[derive(Debug, Clone, Logos, PartialEq, Eq, Hash)]
 #[logos(skip r"[ \t\n\r]+")]
 #[logos(error(LexingError<'s>, LexingError::from_lexer))]
 pub enum Tokens<'t> {
@@ -165,9 +154,12 @@ pub enum Tokens<'t> {
     // binary subtraction. Negative literals are handled by unary `-` in the
     // Pratt parser. Leading-dot (`.5`), trailing-dot (`1.`), and exponent
     // forms are all valid OpenSCAD numbers.
-    #[regex(r"[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?", |lex| lex.slice().parse::<f64>().ok())]
-    #[regex(r"\.[0-9]+([eE][+-]?[0-9]+)?", |lex| lex.slice().parse::<f64>().ok())]
-    Number(f64),
+    //
+    // The source text is kept as written; [`LitNum`](crate::prelude::LitNum)
+    // converts it to `f64`, so the raw spelling (`1.50`, `1e3`) survives.
+    #[regex(r"[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?", |lex| lex.slice())]
+    #[regex(r"\.[0-9]+([eE][+-]?[0-9]+)?", |lex| lex.slice())]
+    Number(&'t str),
 
     #[regex(r#""([^"\\]|\\.)*""#, |lex| {
         let s = lex.slice();
