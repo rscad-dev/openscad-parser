@@ -53,7 +53,7 @@
 
         src = let
           filterBySuffix = path: exts: lib.any (ext: lib.hasSuffix ext path) exts;
-          sourceFilters = path: type: (craneLib.filterCargoSources path type) || filterBySuffix path [".c" ".h" ".hpp" ".cpp" ".cc"];
+          sourceFilters = path: type: (craneLib.filterCargoSources path type) || filterBySuffix path [".c" ".h" ".hpp" ".cpp" ".cc" ".scad"];
         in
           lib.cleanSourceWith {
             filter = sourceFilters;
