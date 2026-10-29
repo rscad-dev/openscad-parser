@@ -65,15 +65,20 @@ fn string_containing_comment_markers_is_not_a_comment() {
 
 #[test]
 fn number_literal_values() {
-    for (src, expected) in [
-        ("x = 42;", 42.0),
-        ("x = 1.5e-2;", 0.015),
-        ("x = .25;", 0.25),
+    for (raw, expected) in [
+        ("42", 42.0),
+        ("1.50", 1.5),
+        ("1.5e-2", 0.015),
+        (".25", 0.25),
+        ("1.", 1.0),
+        ("1E+3", 1000.0),
     ] {
-        let Expr::Lit(ExprLit { lit: Lit::Num(n) }) = local_value(src) else {
+        let src = format!("x = {raw};");
+        let Expr::Lit(ExprLit { lit: Lit::Num(n) }) = local_value(&src) else {
             panic!("expected a number literal in {src:?}");
         };
         assert_eq!(n.value(), expected, "value of {src:?}");
+        assert_eq!(n.raw(), raw, "raw text of {src:?}");
     }
 }
 

@@ -45,6 +45,12 @@ impl LitNum {
     pub fn value(&self) -> f64 {
         self.value
     }
+
+    /// Returns the number exactly as written in the source (e.g. `1.50`,
+    /// `1e3`).
+    pub fn raw(&self) -> &str {
+        &self.literal.literal
+    }
 }
 
 impl core::cmp::Eq for LitNum {}
@@ -109,17 +115,14 @@ impl<'a> Parseable<'a> for LitNum {
     where
         I: Input<'a>,
     {
-        any()
-            .filter(|t| matches!(t, Tokens::Number(_)))
-            .map_with(|token, extra| {
-                if let Tokens::Number(s) = token {
-                    LitNum {
-                        literal: Literal::from_string(s.to_string(), extra.span()),
-                        value: s,
-                    }
-                } else {
-                    unreachable!("This should never happen because of the filter")
-                }
+        select! { Tokens::Number(raw) => raw }
+            .try_map(|raw: &str, span: Span| {
+                raw.parse::<f64>()
+                    .map(|value| LitNum {
+                        literal: Literal::new(raw, span),
+                        value,
+                    })
+                    .map_err(|err| Rich::custom(span, format!("invalid number `{raw}`: {err}")))
             })
             .labelled("LitNum")
     }
