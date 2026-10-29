@@ -236,8 +236,8 @@ impl<'a> Parseable<'a> for LitUndef {
 /// In OpenSCAD, paths are written unquoted between angle brackets:
 /// `include <foo/bar.scad>`, `use <../lib/utils.scad>`.
 ///
-/// The parser consumes all tokens between `<` and `>` and reconstructs
-/// the path string from the token values.
+/// The lexer emits the text between `<` and `>` verbatim as a single
+/// [`Tokens::Path`], so spaces and digit runs survive unchanged.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct LitPath {
     path: Box<str>,
@@ -262,40 +262,12 @@ impl<'a> Parseable<'a> for LitPath {
     where
         I: Input<'a>,
     {
-        any()
-            .filter(|t| !matches!(t, Tokens::Gt))
-            .map_with(|token, extra| {
-                let segment = match token {
-                    Tokens::Identifier(s) => s.to_string(),
-                    Tokens::Dot => ".".to_string(),
-                    Tokens::DotDot => "..".to_string(),
-                    Tokens::Slash => "/".to_string(),
-                    Tokens::Minus => "-".to_string(),
-                    Tokens::Number(n) => n.to_string(),
-                    Tokens::String(s) => s.to_string(),
-                    _ => String::new(),
-                };
-                (segment, extra.span())
-            })
-            .repeated()
-            .at_least(1)
-            .collect::<Vec<_>>()
-            .map(|segments: Vec<(String, Span)>| {
-                let first_span = segments
-                    .first()
-                    .expect("BUG: at_least(1) guarantees a first segment")
-                    .1;
-                let last_span = segments
-                    .last()
-                    .expect("BUG: at_least(1) guarantees a last segment")
-                    .1;
-                let span = first_span.union(last_span);
-                let path: String = segments.into_iter().map(|(s, _)| s).collect();
-                LitPath {
-                    path: path.into(),
-                    span,
-                }
-            })
-            .labelled("LitPath")
+        select! {
+            Tokens::Path(path) = extra => LitPath {
+                path: path.into(),
+                span: extra.span(),
+            },
+        }
+        .labelled("LitPath")
     }
 }

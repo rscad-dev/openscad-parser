@@ -137,6 +137,20 @@ fn include_and_use_paths() {
     );
     assert_eq!(import_path("use <MCAD/stepper.scad>"), "MCAD/stepper.scad");
     assert_eq!(import_path("use <parts/12/x.scad>"), "parts/12/x.scad");
+    assert_eq!(import_path("include<tight.scad>"), "tight.scad");
+    assert_eq!(import_path("include\n\t<next_line.scad>"), "next_line.scad");
+}
+
+#[test]
+fn include_path_must_close_on_the_same_line() {
+    parse_err("include <a.scad\n> cube();");
+}
+
+#[test]
+fn angle_brackets_outside_imports_are_comparisons() {
+    let Expr::Binary(_) = local_value("x = a < b && c > d;") else {
+        panic!("expected a binary expression");
+    };
 }
 
 #[test]
@@ -150,7 +164,6 @@ fn include_path_span_covers_the_path() {
 }
 
 #[test]
-#[ignore = "bug: LitPath rebuilds the path from tokens, losing whitespace and number spelling"]
 fn include_paths_preserve_source_text() {
     for path in [
         "01_base.scad",
