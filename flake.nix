@@ -48,12 +48,17 @@
         stableToolchainWithRustAnalyzer = stableToolchain.override {
           extensions = ["rust-src" "rust-analyzer"];
         };
-        craneLib = (crane.mkLib pkgs).overrideToolchain stableToolchain;
-        craneLibLLvmTools = (crane.mkLib pkgs).overrideToolchain stableToolchainWithLLvmTools;
+        # crane deprecated per-derivation `stdenv` overrides; select it on the lib instead.
+        mkCraneLib = toolchain:
+          ((crane.mkLib pkgs).overrideToolchain toolchain).overrideScope (_final: _prev: {
+            stdenvSelector = p: p.clangStdenv;
+          });
+        craneLib = mkCraneLib stableToolchain;
+        craneLibLLvmTools = mkCraneLib stableToolchainWithLLvmTools;
 
         src = let
           filterBySuffix = path: exts: lib.any (ext: lib.hasSuffix ext path) exts;
-          sourceFilters = path: type: (craneLib.filterCargoSources path type) || filterBySuffix path [".c" ".h" ".hpp" ".cpp" ".cc"];
+          sourceFilters = path: type: (craneLib.filterCargoSources path type) || filterBySuffix path [".c" ".h" ".hpp" ".cpp" ".cc" ".scad"];
         in
           lib.cleanSourceWith {
             filter = sourceFilters;
@@ -63,7 +68,6 @@
           {
             inherit src;
             pname = name;
-            stdenv = p: p.clangStdenv;
             doCheck = false;
             # LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
             # nativeBuildInputs = with pkgs; [
@@ -72,12 +76,12 @@
             # ];
             buildInputs = with pkgs;
               []
-              ++ (lib.optionals pkgs.stdenv.isDarwin [
+              ++ (lib.optionals pkgs.stdenv.hostPlatform.isDarwin [
                 libiconv
                 apple-sdk_26
               ]);
           }
-          // (lib.optionalAttrs pkgs.stdenv.isLinux {
+          // (lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
             # BINDGEN_EXTRA_CLANG_ARGS = "-I${pkgs.llvmPackages.libclang.lib}/lib/clang/18/include";
           });
         cargoArtifacts = craneLib.buildPackage commonArgs;
@@ -114,7 +118,7 @@
                   partitionType = "count";
                 });
             }
-            // lib.optionalAttrs (!pkgs.stdenv.isDarwin) {
+            // lib.optionalAttrs (!pkgs.stdenv.hostPlatform.isDarwin) {
               llvm-cov = craneLibLLvmTools.cargoLlvmCov (commonArgs // {inherit cargoArtifacts;});
             };
         in
@@ -152,7 +156,7 @@
                   cargo-nextest
                   cargo-deny
                 ]
-                ++ (lib.optionals pkgs.stdenv.isDarwin [
+                ++ (lib.optionals pkgs.stdenv.hostPlatform.isDarwin [
                   apple-sdk_26
                 ]);
             });
